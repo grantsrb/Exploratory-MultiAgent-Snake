@@ -18,15 +18,17 @@ class Model(nn.Module):
 
         self.convs = nn.ModuleList([])
 
-        self.conv1 = self.conv_block(input_space[-3],8)
+        self.conv1 = self.conv_block(input_space[-3],9)
         self.convs.append(self.conv1)
-        self.conv2 = self.conv_block(8, 12, bnorm=True)
+        self.conv2 = self.conv_block(9, 12, bnorm=True)
         self.convs.append(self.conv2)
-        self.conv3 = self.conv_block(12, 16, bnorm=True)
+        self.conv3 = self.conv_block(12, 12, bnorm=True)
         self.convs.append(self.conv3)
-        self.conv4 = self.conv_block(16, 20, bnorm=True)
+        self.conv4 = self.conv_block(12, 12, bnorm=True)
         self.convs.append(self.conv4)
-        self.conv5 = self.conv_block(20, 20, stride=2, bnorm=True)
+        self.conv5 = self.conv_block(12, 12, stride=2, bnorm=True)
+        self.convs.append(self.conv5)
+        self.conv5 = self.conv_block(12, 12, stride=2, bnorm=True)
         self.convs.append(self.conv5)
 
         self.features = nn.Sequential(*self.convs)
@@ -37,7 +39,7 @@ class Model(nn.Module):
 
     def conv_block(self, chan_in, chan_out, ksize=3, stride=1, padding=1, activation="relu", max_pool=False, bnorm=True):
         block = []
-        block.append(nn.Conv2d(chan_in, chan_out, ksize, stride, padding=padding))
+        block.append(nn.Conv2d(chan_in, chan_out, ksize, stride=stride, padding=padding))
         activation=activation.lower()
         if "relu" in activation:
             block.append(nn.ReLU())
@@ -74,8 +76,7 @@ class Model(nn.Module):
         feats = feats.view(feats.size(0), -1)
         if self.classifier is None:
             self.flat_shape = feats.shape
-            modules = [self.dense_block(feats.size(1), 200, batch_norm=True)]
-            modules.append(self.dense_block(200, 200, batch_norm=True))
+            modules = [self.dense_block(feats.size(1), 200, activation='relu' batch_norm=True)]
             self.precursor = nn.Sequential(*modules)
             self.classifier = self.dense_block(200,self.output_space,activation="none",batch_norm=False)
             self.evaluator = self.dense_block(200, 1, activation="none", batch_norm=False)
