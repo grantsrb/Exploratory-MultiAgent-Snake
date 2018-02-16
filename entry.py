@@ -11,21 +11,21 @@ import copy
 import time
 
 # Change your policy file here!
-import conv_model as model
+import dense_model as model
 print("Using dense_model as policy file.")
 
 if __name__ == '__main__':
 
     exp_name = 'default'
-    env_type = 'snake-v0'
+    env_type = 'snake-plural-v0'
 
     # Hyperparameters
     gamma = .99 # Reward discount factor
     _lambda = .98 # GAE moving average factor
-    max_tsteps = 1000000
-    n_envs = 5 # Number of environments
+    max_tsteps = 40000000
+    n_envs = 10 # Number of environments
     n_tsteps = 15 # Maximum number of steps to take in an environment for one episode
-    n_rollouts = 3*n_envs # Number of times to perform rollouts before updating model
+    n_rollouts = 25 # Number of times to perform rollouts before updating model
     val_const = .5 # Scales the value portion of the loss function
     entropy_const = 0.01 # Scales the entropy portion of the loss function
     max_norm = 0.4 # Scales the gradients using their norm
@@ -40,6 +40,8 @@ if __name__ == '__main__':
     grid_size = [15,15]
     n_foods = 2
     unit_size = 4
+    n_snakes = 2
+    snake_size = 3
 
     resume = False
     render = False
@@ -57,6 +59,8 @@ if __name__ == '__main__':
             if "lr=" in str_arg: lr = float(str_arg[len("lr="):])
             if "grid_size=" in str_arg: grid_size= [int(str_arg[len('grid_size='):]),int(str_arg[len('grid_size='):])]
             if "n_foods=" in str_arg: n_foods= int(str_arg[len('n_foods='):])
+            if "n_snakes=" in str_arg: n_snakes= int(str_arg[len('n_snakes='):])
+            if "snake_size=" in str_arg: snake_size= int(str_arg[len('snake_size='):])
             if "unit_size=" in str_arg: unit_size= int(str_arg[len('unit_size='):])
             if "n_obs_stack=" in str_arg: n_obs_stack= int(str_arg[len('n_obs_stack='):])
             if "env_type=" in str_arg: env_type = str_arg[len('env_type='):]
@@ -92,6 +96,8 @@ if __name__ == '__main__':
     print("n_obs_stack:", n_obs_stack)
     print("grid_size:", grid_size)
     print("n_foods:", n_foods)
+    print("n_snakes:", n_snakes)
+    print("snake_size:", snake_size)
     print("unit_size:", unit_size)
     print("norm_advs:", norm_advs)
     print("Resume:", resume)
@@ -110,7 +116,7 @@ if __name__ == '__main__':
 
     collectors = []
     for i in range(n_envs):
-        collector = Collector(reward_q, grid_size=grid_size, n_foods=n_foods, unit_size=unit_size, n_obs_stack=n_obs_stack, net=None, n_tsteps=n_tsteps, gamma=gamma, env_type=env_type, preprocessor=model.Model.preprocess)
+        collector = Collector(reward_q, grid_size=grid_size, n_snakes=n_snakes, snake_size=snake_size, n_foods=n_foods, unit_size=unit_size, n_obs_stack=n_obs_stack, net=None, n_tsteps=n_tsteps, gamma=gamma, env_type=env_type, preprocessor=model.Model.preprocess)
         collectors.append(collector)
 
     print("Obs Shape:,",collectors[0].obs_shape)
@@ -121,7 +127,6 @@ if __name__ == '__main__':
     dummy = net.forward(Variable(torch.zeros(2,*collectors[0].state_shape)))
     if resume:
         net.load_state_dict(torch.load(net_save_file))
-        optim.load_state_dict(torch.load(optim_save_file))
     net.share_memory()
     target_net = copy.deepcopy(net)
     data_producers = []
@@ -132,7 +137,8 @@ if __name__ == '__main__':
         data_producer.start()
 
     updater = Updater(target_net, lr, entropy_const=entropy_const, value_const=val_const, gamma=gamma, _lambda=_lambda, max_norm=max_norm, norm_advs=norm_advs)
-
+    if resume:
+        updater.optim.load_state_dict(torch.load(optim_save_file))
     updater.optim.zero_grad()
     updater.net.train(mode=True)
     updater.net.req_grads(True)
@@ -149,10 +155,11 @@ if __name__ == '__main__':
         ep_data = [ep_states, ep_rewards, ep_dones, ep_actions, ep_advantages]
         for i in range(n_rollouts):
             data = data_q.get()
-            for i in range(len(ep_data)):
-                ep_data[i] += data[i]
-        T += len(ep_data[0])
-        ep_data[0] = np.asarray(ep_data[0], dtype=np.float32) # convert states to single numpy array
+            for j in range(len(ep_data)):
+                ep_data[j].append(data[j])
+        T += n_rollouts*n_tsteps
+        for i in range(len(ep_data)):
+            ep_data[i] = np.concatenate(ep_data[i], axis=0)
 
         # Calculate the Loss and Update nets
         updater.calc_loss(*ep_data, gae, reinforce)
