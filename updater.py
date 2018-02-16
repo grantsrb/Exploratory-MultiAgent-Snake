@@ -76,7 +76,7 @@ class Updater():
 
         """
 
-        states = Variable(torch.from_numpy(states))
+        states = Variable(torch.FloatTensor(states))
         values, raw_pis = self.net.forward(states)
         softlog_pis = F.log_softmax(raw_pis, dim=-1)
         softlog_column = softlog_pis[list(range(softlog_pis.size(0))), actions]
